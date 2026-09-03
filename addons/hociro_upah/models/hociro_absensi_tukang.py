@@ -7,6 +7,10 @@ SESI_SELECTION = [
     ('1', '1'),
 ]
 
+FIELD_TERKUNCI_SAAT_DIKUATKAN = {
+    'tanggal', 'employee_id', 'proyek_id', 'sesi_pagi', 'sesi_siang', 'lembur',
+}
+
 
 class HociroAbsensiTukang(models.Model):
     _name = 'hociro.absensi.tukang'
@@ -48,6 +52,16 @@ class HociroAbsensiTukang(models.Model):
     def _compute_hari_kerja(self):
         for rec in self:
             rec.hari_kerja = (float(rec.sesi_pagi) + float(rec.sesi_siang)) / 2
+
+    def write(self, vals):
+        if FIELD_TERKUNCI_SAAT_DIKUATKAN.intersection(vals) and any(
+            rec.state == 'dikuatkan' for rec in self
+        ):
+            raise UserError(
+                'Absensi yang sudah dikuatkan tidak boleh diubah. '
+                'Kembalikan ke draft terlebih dahulu (tombol "Kembalikan ke Draft").'
+            )
+        return super().write(vals)
 
     def action_dikuatkan(self):
         self.write({'state': 'dikuatkan'})
