@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_hociro_absensi_tukang_list" model="ir.ui.view">
+        <field name="name">hociro.absensi.tukang.list</field>
+        <field name="model">hociro.absensi.tukang</field>
+        <field name="arch" type="xml">
+            <list string="Absensi Tukang" decoration-muted="state == 'draft'">
+                <field name="tanggal"/>
+                <field name="employee_id"/>
+                <field name="proyek_id"/>
+                <field name="sesi_pagi"/>
+                <field name="sesi_siang"/>
+                <field name="lembur"/>
+                <field name="hari_kerja"/>
+                <field name="pengawas_id"/>
+                <field name="state"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_hociro_absensi_tukang_form" model="ir.ui.view">
+        <field name="name">hociro.absensi.tukang.form</field>
+        <field name="model">hociro.absensi.tukang</field>
+        <field name="arch" type="xml">
+            <form string="Absensi Tukang">
+                <header>
+                    <button name="action_dikuatkan" string="Kuatkan" type="object"
+                            invisible="state != 'draft'" class="oe_highlight"/>
+                    <button name="action_draft" string="Kembalikan ke Draft" type="object"
+                            invisible="state != 'dikuatkan'"/>
+                    <field name="state" widget="statusbar"/>
+                </header>
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="tanggal"/>
+                            <field name="employee_id"/>
+                            <field name="proyek_id"/>
+                        </group>
+                        <group>
+                            <field name="sesi_pagi"/>
+                            <field name="sesi_siang"/>
+                            <field name="hari_kerja" readonly="1"/>
+                            <field name="lembur"/>
+                        </group>
+                    </group>
+                    <group>
+                        <field name="pengawas_id"/>
+                        <field name="catatan"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_hociro_absensi_tukang_search" model="ir.ui.view">
+        <field name="name">hociro.absensi.tukang.search</field>
+        <field name="model">hociro.absensi.tukang</field>
+        <field name="arch" type="xml">
+            <search string="Absensi Tukang">
+                <field name="employee_id"/>
+                <field name="proyek_id"/>
+                <field name="tanggal"/>
+                <filter string="Draft" name="filter_draft" domain="[('state', '=', 'draft')]"/>
+                <filter string="Dikuatkan" name="filter_dikuatkan" domain="[('state', '=', 'dikuatkan')]"/>
+                <group expand="0" string="Kelompokkan">
+                    <filter string="Proyek" name="group_proyek" context="{'group_by': 'proyek_id'}"/>
+                    <filter string="Tanggal" name="group_tanggal" context="{'group_by': 'tanggal'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_hociro_absensi_tukang" model="ir.actions.act_window">
+        <field name="name">Absensi Tukang</field>
+        <field name="res_model">hociro.absensi.tukang</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="view_hociro_absensi_tukang_search"/>
+    </record>
+
+    <menuitem id="menu_hociro_upah_root" name="Upah &amp; Absensi" sequence="60"/>
+    <menuitem id="menu_hociro_absensi" name="Absensi" parent="menu_hociro_upah_root" sequence="10"/>
+    <menuitem id="menu_hociro_absensi_tukang" name="Tukang"
+              parent="menu_hociro_absensi"
+              action="action_hociro_absensi_tukang" sequence="10"/>
+
+</odoo>
