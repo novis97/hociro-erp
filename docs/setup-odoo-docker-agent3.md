@@ -49,18 +49,19 @@ Verifikasi: `free -h` harus menunjukkan swap 2.0G aktif.
 ├── .env
 ├── config/
 │   └── odoo.conf
-├── custom-addons/          ← repo hociro-erp di-clone/di-mount ke sini
-│   └── hociro_upah/        ← masih kosong sampai Agent 2 commit
+├── repo/                   ← repo hociro-erp di-clone ke sini
+│   └── addons/
+│       └── hociro_upah/    ← modul Odoo, di-mount ke container
 └── backups/
 ```
 
 ```bash
-sudo mkdir -p /opt/hociro-erp/{config,custom-addons,backups}
+sudo mkdir -p /opt/hociro-erp/{config,repo,backups}
 sudo chown -R $USER:$USER /opt/hociro-erp
 cd /opt/hociro-erp
 ```
 
-`custom-addons/` adalah tempat repo GitHub (`novis97@gmail.com`) di-clone. Agent 3 tidak menulis kode di sini — hanya `git pull` setelah Agent 2 commit.
+`repo/` adalah tempat repo GitHub (`novis97@gmail.com`) di-clone; addons Odoo ada di `repo/addons/`. Agent 3 tidak menulis kode di sini — hanya `git pull` setelah Agent 2 commit.
 
 ---
 
@@ -124,7 +125,7 @@ services:
     volumes:
       - odoo-web-data:/var/lib/odoo        # filestore — WAJIB persistent
       - ./config:/etc/odoo
-      - ./custom-addons:/mnt/extra-addons
+      - ./repo/addons:/mnt/extra-addons
 
 volumes:
   odoo-db-data:
@@ -167,7 +168,7 @@ services:
     volumes:
       - odoo-staging-web-data:/var/lib/odoo
       - ./config:/etc/odoo
-      - ./custom-addons:/mnt/extra-addons
+      - ./repo/addons:/mnt/extra-addons
 
 volumes:
   odoo-staging-db-data:
