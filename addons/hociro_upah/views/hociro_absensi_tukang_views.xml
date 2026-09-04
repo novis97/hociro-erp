@@ -79,7 +79,8 @@
         <field name="search_view_id" ref="view_hociro_absensi_tukang_search"/>
     </record>
 
-    <menuitem id="menu_hociro_upah_root" name="Upah &amp; Absensi" sequence="60"/>
+    <menuitem id="menu_hociro_upah_root" name="Upah &amp; Absensi" sequence="60"
+              web_icon="hociro_upah,static/description/icon.png"/>
     <menuitem id="menu_hociro_absensi" name="Absensi" parent="menu_hociro_upah_root" sequence="10"/>
     <menuitem id="menu_hociro_absensi_tukang" name="Tukang"
               parent="menu_hociro_absensi"
