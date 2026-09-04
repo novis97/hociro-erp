@@ -163,6 +163,26 @@ Catatan: atribut `string` pada `<group>` di **form view** tidak terpengaruh — 
 
 Format `version` harus `19.0.x.y.z` — prefix versi Odoo, bukan `1.0.0`.
 
+### 1.9 `_sql_constraints` deprecated → `models.Constraint`
+
+Sejak v19, atribut kelas `_sql_constraints` (list of tuple) memicu warning `Model attribute _sql_constraints is no longer supported, please define models.Constraint on the model`. Modul masih ter-load (bukan error keras), tapi ini API lama yang akan dibuang — dikonfirmasi dengan membaca source Odoo 19 asli (mis. `odoo/addons/base/models/ir_filters.py`, `addons/sales_team/models/crm_tag.py`), yang semuanya sudah memakai `models.Constraint`.
+
+```python
+# SALAH — deprecated, memicu warning di v19
+_sql_constraints = [
+    ('tanggal_employee_uniq', 'unique(tanggal, employee_id)',
+     'Sudah ada absensi untuk tukang ini pada tanggal yang sama.'),
+]
+
+# BENAR — v19
+_tanggal_employee_uniq = models.Constraint(
+    'unique(tanggal, employee_id)',
+    'Sudah ada absensi untuk tukang ini pada tanggal yang sama.',
+)
+```
+
+Tiap constraint jadi satu atribut kelas terpisah (nama atribut bebas, konvensinya diawali `_`), bukan satu list berisi banyak tuple. `models.Constraint(sql, message)` — dua argumen positional, urutannya sama seperti tuple lama tapi tanpa elemen nama pertama (nama constraint SQL-nya diambil dari nama atribut Python). Kalau ada lebih dari satu constraint, definisikan beberapa atribut `_xxx = models.Constraint(...)` terpisah — lihat `odoo/addons/base/models/ir_filters.py` untuk contoh dua constraint dalam satu model.
+
 ---
 
 ## 2. Area yang WAJIB Diverifikasi Sebelum Dipakai
@@ -312,11 +332,14 @@ grep -rn 't-esc=' addons/ && echo "GAGAL: pakai t-out"
 grep -rn '<group expand=' addons/*/views/*.xml && echo "GAGAL: expand tidak valid di <group> search view v19"
 grep -rln '<search' addons/*/views/*.xml | xargs -r grep -n '<group string=' && echo "GAGAL: string tidak valid di <group> search view v19"
 
-# 6. Modul benar-benar bisa di-install di database bersih
+# 6. Tidak ada _sql_constraints tersisa (deprecated di v19)
+grep -rn '_sql_constraints' addons/ && echo "GAGAL: pakai models.Constraint"
+
+# 7. Modul benar-benar bisa di-install di database bersih
 odoo -d test_bersih -i hociro_upah --stop-after-init
 ```
 
-Poin 6 tidak bisa dinegosiasi. Modul yang "berhasil upgrade" di database lama sering gagal di database bersih karena data XML yang sudah terlanjur ada.
+Poin 7 tidak bisa dinegosiasi. Modul yang "berhasil upgrade" di database lama sering gagal di database bersih karena data XML yang sudah terlanjur ada.
 
 ---
 

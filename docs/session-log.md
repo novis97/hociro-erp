@@ -2,6 +2,21 @@
 
 Catatan status kerja di repo `hociro-erp`, ditulis di akhir sesi supaya sesi berikutnya (siapa pun yang melanjutkan — manusia atau agent) tidak perlu membaca ulang seluruh transkrip.
 
+---
+
+## 0. Update 2026-09-04 — Checklist §5 poin instalasi LOLOS
+
+**Install `hociro_upah` ke database bersih (`test_bersih`) berhasil, tanpa error.** Ini menutup item yang paling banyak ditandai "belum" di log 2026-09-03 (lihat §1, §2, §4 poin 3 di bawah — semua merujuk balik ke sini).
+
+Dua temuan v19 muncul dan sudah diperbaiki + didokumentasikan di `docs/v19-conventions.md`:
+
+1. **`ParseError` di search view** — `<group expand="0" string="Kelompokkan">` di `views/hociro_absensi_tukang_views.xml` tidak valid lagi di v19 (atribut `expand`/`string` pada `<group>` search view dihapus lewat commit resmi Odoo `a814ad6b`). Diperbaiki jadi `<group>` polos. Lihat `v19-conventions.md` §1.7.
+2. **Warning (bukan error) `_sql_constraints` deprecated** — muncul saat install sukses: `Model attribute _sql_constraints is no longer supported, please define models.Constraint on the model`. Diperbaiki di `models/hociro_absensi_tukang.py`: `_sql_constraints = [...]` diganti `_tanggal_employee_uniq = models.Constraint(...)`. Lihat `v19-conventions.md` §1.9.
+
+Kedua pola ini juga sudah ditambahkan sebagai grep check baru di checklist §5 `v19-conventions.md` supaya modul berikutnya tidak mengulang.
+
+**Yang masih belum jadi bukti**: instalasi ini di database *test_bersih*, bukan berarti seluruh alur deployment VPS (§2 dan §3 di bawah) sudah selesai — `.env`, `odoo.conf`, `docker-compose.yml` sungguhan, swap, Nginx/SSL, dsb. semuanya **masih berstatus belum dikerjakan** seperti tercatat di §2/§3 di bawah.
+
 **Konteks penting:** seluruh sesi ini dikerjakan di mesin dev lokal (Windows), **bukan** di VPS. Tidak ada koneksi ke VPS produksi/staging yang dibuat di sesi ini. Semua yang disebut "belum dilakukan" di bawah ini murni karena belum dikerjakan — bukan karena dicoba dan gagal.
 
 ---
@@ -20,7 +35,7 @@ Catatan status kerja di repo `hociro-erp`, ditulis di akhir sesi supaya sesi ber
   - ✅ Tidak ada `<tree>` (semua `<list>`)
   - ✅ Tidak ada `def name_get`
   - ✅ Tidak ada `t-esc=`
-  - ❌ **Poin 5 (install ke database bersih) BELUM dijalankan** — tidak ada instance Odoo 19 / Postgres di mesin dev ini. Lihat §3 dan §4 di bawah.
+  - ✅ **Poin instalasi ke database bersih SUDAH lolos (2026-09-04)** — lihat §0 di atas untuk detail dan dua temuan v19 yang muncul saat itu.
 
 ### Struktur folder (konsolidasi)
 - Sebelumnya: `docs/`, `specs/`, dan `hociro_upah/` tersebar antara folder induk `erp-hociro/` dan repo git `hociro-erp/`.
@@ -53,7 +68,7 @@ Semua poin ini adalah langkah **deployment ke VPS** dari `docs/setup-odoo-docker
 - **`docker compose up -d` belum dijalankan** — container `db` dan `odoo` belum pernah dinyalakan.
 - **Database belum dibuat**, jadi `list_db = False` juga belum bisa diverifikasi aktif.
 - **Nginx + SSL (§6), cron disk/memory/backup (§7–8) belum disentuh.**
-- **Checklist §5 poin 5 `v19-conventions.md`** (`odoo -d test_bersih -i hociro_upah --stop-after-init`) belum bisa dijalankan — butuh instance Odoo 19 nyata.
+- ~~Checklist §5 `v19-conventions.md` (`odoo -d test_bersih -i hociro_upah --stop-after-init`) belum bisa dijalankan~~ — **SUDAH lolos 2026-09-04, lihat §0.**
 
 ---
 
@@ -140,7 +155,7 @@ docker compose exec -T odoo \
 
 1. **Swap 2GB belum pernah diverifikasi berjalan di VPS mana pun dari sesi ini.** Jangan asumsikan sudah aktif — jalankan `free -h` dulu sebelum `docker compose up -d`, karena tanpa swap di RAM 3GB, instalasi modul atau lonjakan beban bisa memicu OOM (lihat `docs/setup-odoo-docker-agent3.md` §0.1).
 2. **Asumsi belum terverifikasi ke source Odoo 19 asli:** field `plan_id` pada `account.analytic.account` (dipakai di domain `proyek_id` — `addons/hociro_upah/models/hociro_absensi_tukang.py` baris ~29-31, komentar sudah ada di kode). Kalau nama field sebenarnya berbeda di Odoo 19, modul akan gagal load view. **Wajib** dicek ke `$ODOO_SRC/addons/analytic/models/analytic_account.py` di VPS sebelum atau saat langkah install (§3 poin 9 di atas).
-3. **Checklist §5 poin 5 (`v19-conventions.md`) belum pernah lolos** — modul ini belum pernah benar-benar diinstal ke Odoo 19 sungguhan. Semua "lolos checklist" sejauh ini hanya cek statis (grep pola v16 + `ast.parse`/XML parse), bukan bukti modul bisa jalan.
+3. ~~Checklist §5 poin 5 (`v19-conventions.md`) belum pernah lolos~~ — **RESOLVED 2026-09-04**: instalasi ke `test_bersih` berhasil tanpa error. Lihat §0 untuk dua temuan v19 (ParseError search view, warning `_sql_constraints`) yang muncul dan sudah diperbaiki dalam prosesnya.
 4. **Commit `3e33305 "read upah"` di riwayat git tidak dibuat lewat perintah eksplisit dalam sesi kerja ini** — muncul begitu saja di antara "Initial commit" dan commit pertama yang saya buat, berisi isi awal modul `hociro_upah/` (sebelum dipindah ke `addons/`). Sudah dilaporkan ke user saat ditemukan, tidak ada investigasi lebih lanjut dan tidak ada tindakan diambil terhadapnya. Kalau ini bukan hasil kerja yang diketahui/diinginkan, cek riwayat commit dan proses lain (hook, sesi lain) yang mungkin punya akses tulis ke repo ini.
 5. **`ir.model.access.csv` masih sangat longgar** — semua user internal (`base.group_user`) punya akses penuh CRUD ke `hociro.absensi.tukang`, termasuk `unlink` (walau dibatasi lewat kode untuk record `dikuatkan`, bukan lewat access right). Belum ada pemisahan peran pengawas vs staf lain.
 6. **`.env`, `config/odoo.conf`, `docker-compose.yml` belum ada sebagai file nyata di mana pun** — baru contoh isi di dokumentasi. Jangan lupa buat filenya dulu sebelum `docker compose up`.

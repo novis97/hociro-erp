@@ -43,10 +43,10 @@ class HociroAbsensiTukang(models.Model):
     )
     catatan = fields.Char()
 
-    _sql_constraints = [
-        ('tanggal_employee_uniq', 'unique(tanggal, employee_id)',
-         'Sudah ada absensi untuk tukang ini pada tanggal yang sama.'),
-    ]
+    _tanggal_employee_uniq = models.Constraint(
+        'unique(tanggal, employee_id)',
+        'Sudah ada absensi untuk tukang ini pada tanggal yang sama.',
+    )
 
     @api.depends('sesi_pagi', 'sesi_siang')
     def _compute_hari_kerja(self):
