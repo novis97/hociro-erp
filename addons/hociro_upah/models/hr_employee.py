@@ -11,18 +11,19 @@ class HrEmployee(models.Model):
         [('staf', 'Staf'), ('tukang', 'Tukang')],
         string='Tipe Pekerja',
     )
-    # hr.employee tidak punya currency_id bawaan; dibutuhkan agar field
-    # Monetary di bawah bisa di-setup oleh registry.
-    currency_id = fields.Many2one(
-        'res.currency',
-        related='company_id.currency_id',
-        string='Mata Uang',
-    )
+    # currency_id sudah disediakan oleh hr.employee core (addons/hr,
+    # related company_id.currency_id) sejak employee/contract dilebur di v19
+    # — jangan didefinisikan ulang di sini. currency_field diisi eksplisit
+    # karena Monetary tidak menulis balik hasil auto-deteksinya ke
+    # ir.model.fields (lihat addons/hr_hourly_cost/models/hr_employee.py
+    # untuk pola yang sama di core Odoo).
     x_upah_harian = fields.Monetary(
         string='Upah Harian',
+        currency_field='currency_id',
         help='Berlaku untuk tukang.',
     )
     x_tarif_lembur = fields.Monetary(
         string='Tarif Lembur',
+        currency_field='currency_id',
         help='Flat per hari. Berlaku untuk tukang & staf.',
     )
