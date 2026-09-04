@@ -4,3 +4,4 @@ access_account_analytic_plan_hociro_readonly,account.analytic.plan.hociro.readon
 access_account_analytic_plan_hociro_manage,account.analytic.plan.hociro.manage,analytic.model_account_analytic_plan,base.group_system,1,1,1,1
 access_account_analytic_account_hociro_readonly,account.analytic.account.hociro.readonly,analytic.model_account_analytic_account,base.group_user,1,0,0,0
 access_account_analytic_account_hociro_manage,account.analytic.account.hociro.manage,analytic.model_account_analytic_account,base.group_system,1,1,1,1
+access_account_analytic_line_hociro_readonly,account.analytic.line.hociro.readonly,analytic.model_account_analytic_line,base.group_user,1,0,0,0
