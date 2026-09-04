@@ -85,4 +85,16 @@
               parent="menu_hociro_absensi"
               action="action_hociro_absensi_tukang" sequence="10"/>
 
+    <!-- Menu Analytic — modul 'account' (Accounting) belum terinstall di server ini,
+         jadi menu bawaan Analytic Plans/Accounts (biasanya muncul di Invoicing/Accounting)
+         tidak tampil di UI. Actions ini sudah ada di modul 'analytic' (dependency kita),
+         cukup ditautkan ke sini supaya bisa diakses. -->
+    <menuitem id="menu_hociro_analytic" name="Analytic" parent="menu_hociro_upah_root" sequence="20"/>
+    <menuitem id="menu_hociro_analytic_plan" name="Analytic Plans"
+              parent="menu_hociro_analytic"
+              action="analytic.account_analytic_plan_action" sequence="10"/>
+    <menuitem id="menu_hociro_analytic_account" name="Analytic Accounts"
+              parent="menu_hociro_analytic"
+              action="analytic.action_account_analytic_account_form" sequence="20"/>
+
 </odoo>
