@@ -208,6 +208,8 @@ workers = 0
 max_cron_threads = 1
 ```
 
+**`admin_passwd = ${ODOO_ADMIN_PASSWD}` TIDAK tersubstitusi otomatis.** Odoo membaca `odoo.conf` secara literal lewat `ConfigParser` — tidak ada shell atau Docker Compose di antaranya yang mengganti `${...}`. Nilai `${ODOO_ADMIN_PASSWD}` di `.env` **hanya** dipakai Compose untuk variabel di `docker-compose.yml`, bukan untuk isi file ini. Setelah mengisi `.env`, baris `admin_passwd` di `odoo.conf` harus diisi manual dengan nilai **sama persis** dengan `ODOO_ADMIN_PASSWD` di `.env` — kalau lupa, master password Database Manager akan jadi string literal `${ODOO_ADMIN_PASSWD}`, bukan password yang dimaksud.
+
 `list_db = False` wajib sebelum domain publik aktif — kalau tidak, siapa saja bisa membuka `/web/database/manager` dan melihat daftar database Anda.
 
 `proxy_mode = True` wajib karena Nginx di depan sebagai reverse proxy.
