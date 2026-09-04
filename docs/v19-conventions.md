@@ -125,7 +125,25 @@ def create(self, vals_list):
 <chatter/>
 ```
 
-### 1.7 Manifest wajib punya `license`
+### 1.7 `<group>` group-by di search view: tanpa `expand` dan `string`
+
+Sejak commit resmi Odoo [`a814ad6b`](https://github.com/odoo/odoo/commit/a814ad6b18da68370376d5cce26e06434cde704f) ("[REF] *: remove string attribute from group in search view"), elemen `<group>` yang membungkus filter "Kelompokkan/Group By" di **search view** tidak lagi menerima atribut `expand` maupun `string`. Modul `hociro_upah` sempat gagal install (`ParseError: Invalid view ... search definition`) karena ini.
+
+```xml
+<!-- SALAH — pola v17/v18, gagal ParseError di v19 -->
+<group expand="0" string="Group By">
+    <filter string="Proyek" name="group_proyek" context="{'group_by': 'proyek_id'}"/>
+</group>
+
+<!-- BENAR — v19 -->
+<group>
+    <filter string="Proyek" name="group_proyek" context="{'group_by': 'proyek_id'}"/>
+</group>
+```
+
+Catatan: atribut `string` pada `<group>` di **form view** tidak terpengaruh — larangan ini spesifik untuk `<group>` di dalam `<search>`.
+
+### 1.8 Manifest wajib punya `license`
 
 ```python
 {
@@ -290,11 +308,15 @@ grep -rn 'def name_get' addons/ && echo "GAGAL: pakai _compute_display_name"
 # 4. Tidak ada t-esc tersisa
 grep -rn 't-esc=' addons/ && echo "GAGAL: pakai t-out"
 
-# 5. Modul benar-benar bisa di-install di database bersih
+# 5. Tidak ada <group expand=...> atau <group string=...> di search view
+grep -rn '<group expand=' addons/*/views/*.xml && echo "GAGAL: expand tidak valid di <group> search view v19"
+grep -rln '<search' addons/*/views/*.xml | xargs -r grep -n '<group string=' && echo "GAGAL: string tidak valid di <group> search view v19"
+
+# 6. Modul benar-benar bisa di-install di database bersih
 odoo -d test_bersih -i hociro_upah --stop-after-init
 ```
 
-Poin 5 tidak bisa dinegosiasi. Modul yang "berhasil upgrade" di database lama sering gagal di database bersih karena data XML yang sudah terlanjur ada.
+Poin 6 tidak bisa dinegosiasi. Modul yang "berhasil upgrade" di database lama sering gagal di database bersih karena data XML yang sudah terlanjur ada.
 
 ---
 

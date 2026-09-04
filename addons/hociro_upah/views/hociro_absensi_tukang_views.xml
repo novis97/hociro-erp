@@ -64,7 +64,7 @@
                 <field name="tanggal"/>
                 <filter string="Draft" name="filter_draft" domain="[('state', '=', 'draft')]"/>
                 <filter string="Dikuatkan" name="filter_dikuatkan" domain="[('state', '=', 'dikuatkan')]"/>
-                <group expand="0" string="Kelompokkan">
+                <group>
                     <filter string="Proyek" name="group_proyek" context="{'group_by': 'proyek_id'}"/>
                     <filter string="Tanggal" name="group_tanggal" context="{'group_by': 'tanggal'}"/>
                 </group>
