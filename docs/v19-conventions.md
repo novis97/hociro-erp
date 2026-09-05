@@ -343,7 +343,27 @@ Poin 7 tidak bisa dinegosiasi. Modul yang "berhasil upgrade" di database lama se
 
 ---
 
-## 6. Catatan Versi
+## 6. Restart Setelah Menambah Field Baru
+
+Setelah menambah **field baru** ke model (bukan sekadar mengubah view atau data), proses upgrade modul lewat:
+
+```bash
+docker compose exec ... -u hociro_upah --stop-after-init
+```
+
+**TIDAK CUKUP.** Perintah itu meng-upgrade modul di proses `--stop-after-init` yang langsung berhenti setelahnya — registry field di proses utama yang melayani web request (worker Odoo yang jalan terus) tidak ikut ter-refresh. Akibatnya field baru bisa tampak "belum ada" (error di ORM, atau kolom tidak ter-load) walau upgrade tadi sukses tanpa error.
+
+Wajib jalankan setelahnya:
+
+```bash
+docker compose restart odoo
+```
+
+Ini **berbeda** dengan perubahan menu/view (XML view, menu, action) — perubahan semacam itu biasanya langsung terlihat setelah `-u` tanpa perlu restart, karena view di-load ulang dari `ir.ui.view` saat request berikutnya. Restart hanya wajib ketika ada perubahan skema: field baru, perubahan tipe field, atau model baru.
+
+---
+
+## 7. Catatan Versi
 
 - Odoo 19 rilis September 2025, disupport sampai Odoo 20 rilis + 2 siklus (~Odoo 22)
 - Odoo 20 diperkirakan rilis sekitar Oktober 2026 — **tidak** menjadi alasan menunda; v19 justru punya runway support lebih panjang dibanding v18
