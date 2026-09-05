@@ -8,6 +8,7 @@
     'data': [
         'security/ir.model.access.csv',
         'views/hociro_absensi_tukang_views.xml',
+        'views/hociro_absensi_staf_views.xml',
     ],
     'installable': True,
     'application': False,

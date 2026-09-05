@@ -4,9 +4,6 @@ from odoo import fields, models
 class HrEmployee(models.Model):
     _inherit = 'hr.employee'
 
-    # Field upah lain di spec §3.3 (x_gaji_pokok, x_tarif_harian,
-    # x_tarif_disiplin, x_tarif_transpor, x_batas_jam_disiplin) belum
-    # diimplementasikan di sini.
     x_tipe_pekerja = fields.Selection(
         [('staf', 'Staf'), ('tukang', 'Tukang')],
         string='Tipe Pekerja',
@@ -26,4 +23,30 @@ class HrEmployee(models.Model):
         string='Tarif Lembur',
         currency_field='currency_id',
         help='Flat per hari. Berlaku untuk tukang & staf.',
+    )
+    x_gaji_pokok = fields.Monetary(
+        string='Gaji Pokok',
+        currency_field='currency_id',
+        help='Berlaku untuk staf. Kosong untuk staf harian murni (tanpa gaji pokok).',
+    )
+    x_tarif_harian = fields.Monetary(
+        string='Tarif Harian',
+        currency_field='currency_id',
+        help='Berlaku untuk staf. Upah per hari hadir.',
+    )
+    x_tarif_disiplin = fields.Monetary(
+        string='Tarif Disiplin',
+        currency_field='currency_id',
+        default=15000,
+        help='Berlaku untuk staf. Default 15.000, bisa dioverride per-orang.',
+    )
+    x_tarif_transpor = fields.Monetary(
+        string='Tarif Transpor',
+        currency_field='currency_id',
+        help='Berlaku untuk staf. Kosong kalau tidak ada tunjangan transpor.',
+    )
+    x_batas_jam_disiplin = fields.Float(
+        string='Batas Jam Disiplin',
+        default=8.5,
+        help='Berlaku untuk staf. Batas cut-off jam masuk untuk dapat tarif disiplin. Default 08:30.',
     )

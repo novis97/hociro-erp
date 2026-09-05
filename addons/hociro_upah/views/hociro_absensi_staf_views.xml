@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_hociro_absensi_staf_list" model="ir.ui.view">
+        <field name="name">hociro.absensi.staf.list</field>
+        <field name="model">hociro.absensi.staf</field>
+        <field name="arch" type="xml">
+            <list string="Absensi Staf"
+                  decoration-success="status == 'hadir'"
+                  decoration-warning="status in ('sakit', 'izin')"
+                  decoration-danger="status == 'alfa'">
+                <field name="tanggal"/>
+                <field name="employee_id"/>
+                <field name="status"/>
+                <field name="jam_masuk" widget="float_time"/>
+                <field name="dapat_disiplin"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_hociro_absensi_staf_form" model="ir.ui.view">
+        <field name="name">hociro.absensi.staf.form</field>
+        <field name="model">hociro.absensi.staf</field>
+        <field name="arch" type="xml">
+            <form string="Absensi Staf">
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="tanggal"/>
+                            <field name="employee_id"/>
+                            <field name="status"/>
+                        </group>
+                        <group>
+                            <field name="jam_masuk" invisible="status != 'hadir'"/>
+                            <field name="dapat_disiplin" invisible="status != 'hadir'" readonly="1"/>
+                            <field name="url_foto" widget="url" invisible="status != 'hadir'"/>
+                        </group>
+                    </group>
+                    <group>
+                        <field name="catatan"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_hociro_absensi_staf_search" model="ir.ui.view">
+        <field name="name">hociro.absensi.staf.search</field>
+        <field name="model">hociro.absensi.staf</field>
+        <field name="arch" type="xml">
+            <search string="Absensi Staf">
+                <field name="employee_id"/>
+                <field name="tanggal"/>
+                <filter string="Hadir" name="filter_hadir" domain="[('status', '=', 'hadir')]"/>
+                <filter string="Sakit" name="filter_sakit" domain="[('status', '=', 'sakit')]"/>
+                <filter string="Izin" name="filter_izin" domain="[('status', '=', 'izin')]"/>
+                <filter string="Cuti" name="filter_cuti" domain="[('status', '=', 'cuti')]"/>
+                <filter string="Alfa" name="filter_alfa" domain="[('status', '=', 'alfa')]"/>
+                <group>
+                    <filter string="Staf" name="group_staf" context="{'group_by': 'employee_id'}"/>
+                    <filter string="Tanggal" name="group_tanggal" context="{'group_by': 'tanggal:month'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_hociro_absensi_staf" model="ir.actions.act_window">
+        <field name="name">Absensi Staf</field>
+        <field name="res_model">hociro.absensi.staf</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="view_hociro_absensi_staf_search"/>
+    </record>
+
+    <menuitem id="menu_hociro_absensi_staf" name="Staf"
+              parent="menu_hociro_absensi"
+              action="action_hociro_absensi_staf" sequence="20"/>
+
+</odoo>
