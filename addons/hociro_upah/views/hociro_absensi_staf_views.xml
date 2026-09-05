@@ -31,7 +31,7 @@
                             <field name="status"/>
                         </group>
                         <group>
-                            <field name="jam_masuk" invisible="status != 'hadir'"/>
+                            <field name="jam_masuk" widget="float_time" invisible="status != 'hadir'"/>
                             <field name="dapat_disiplin" invisible="status != 'hadir'" readonly="1"/>
                             <field name="url_foto" widget="url" invisible="status != 'hadir'"/>
                         </group>
