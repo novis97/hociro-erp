@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_hociro_periode_upah_list" model="ir.ui.view">
+        <field name="name">hociro.periode.upah.list</field>
+        <field name="model">hociro.periode.upah</field>
+        <field name="arch" type="xml">
+            <list string="Periode Upah" decoration-muted="state == 'draft'">
+                <field name="name"/>
+                <field name="tipe"/>
+                <field name="tanggal_mulai"/>
+                <field name="tanggal_selesai"/>
+                <field name="total_upah_kotor"/>
+                <field name="total_dibayar"/>
+                <field name="total_saldo"/>
+                <field name="state"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_hociro_periode_upah_form" model="ir.ui.view">
+        <field name="name">hociro.periode.upah.form</field>
+        <field name="model">hociro.periode.upah</field>
+        <field name="arch" type="xml">
+            <form string="Periode Upah">
+                <header>
+                    <button name="action_hitung_upah" string="Hitung Upah" type="object"
+                            invisible="state == 'ditutup'"
+                            groups="base.group_system" class="oe_highlight"/>
+                    <button name="action_tutup_periode" string="Tutup Periode" type="object"
+                            invisible="state != 'dihitung'"
+                            groups="base.group_system"/>
+                    <button name="action_buka_kembali" string="Buka Kembali" type="object"
+                            invisible="state != 'ditutup'"
+                            groups="base.group_system"/>
+                    <field name="state" widget="statusbar"/>
+                </header>
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="name"/>
+                            <field name="tipe"/>
+                        </group>
+                        <group>
+                            <field name="tanggal_mulai"/>
+                            <field name="tanggal_selesai"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Detail Upah">
+                            <field name="line_ids">
+                                <list editable="bottom"
+                                      decoration-danger="saldo_akhir &lt; 0"
+                                      decoration-warning="tipe_pekerja == 'tukang' and saldo_akhir &gt; 2 * tarif_harian * 6">
+                                    <field name="employee_id"/>
+                                    <!-- Dipakai hanya untuk kondisi decoration di atas (per-baris),
+                                         bukan untuk column_invisible (whole-column, lihat di bawah). -->
+                                    <field name="tipe_pekerja" column_invisible="1"/>
+                                    <!-- column_invisible (bukan invisible) karena tujuannya menyembunyikan
+                                         SELURUH kolom sesuai tipe periode (parent.tipe), bukan sel per baris
+                                         — lihat docs/v19-conventions.md §1.2. Satu periode selalu satu tipe,
+                                         jadi ini seragam untuk semua baris dalam tabel yang sama. -->
+                                    <field name="hari_kerja" column_invisible="parent.tipe != 'mingguan'"/>
+                                    <field name="hari_lembur" column_invisible="parent.tipe != 'mingguan'"/>
+                                    <field name="hari_hadir" column_invisible="parent.tipe != 'bulanan'"/>
+                                    <field name="hari_disiplin" column_invisible="parent.tipe != 'bulanan'"/>
+                                    <field name="tarif_pokok" column_invisible="parent.tipe != 'bulanan'"/>
+                                    <field name="tarif_harian"/>
+                                    <field name="tarif_disiplin" column_invisible="parent.tipe != 'bulanan'"/>
+                                    <field name="tarif_transpor" column_invisible="parent.tipe != 'bulanan'"/>
+                                    <field name="tarif_lembur"/>
+                                    <field name="bonus" column_invisible="parent.tipe != 'bulanan'"/>
+                                    <field name="upah_kotor"/>
+                                    <field name="total_dibayar"/>
+                                    <field name="saldo_awal"/>
+                                    <field name="saldo_akhir"/>
+                                    <field name="catatan"/>
+                                </list>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_hociro_periode_upah_search" model="ir.ui.view">
+        <field name="name">hociro.periode.upah.search</field>
+        <field name="model">hociro.periode.upah</field>
+        <field name="arch" type="xml">
+            <search string="Periode Upah">
+                <field name="name"/>
+                <filter string="Draft" name="filter_draft" domain="[('state', '=', 'draft')]"/>
+                <filter string="Dihitung" name="filter_dihitung" domain="[('state', '=', 'dihitung')]"/>
+                <filter string="Ditutup" name="filter_ditutup" domain="[('state', '=', 'ditutup')]"/>
+                <separator/>
+                <filter string="Mingguan" name="filter_mingguan" domain="[('tipe', '=', 'mingguan')]"/>
+                <filter string="Bulanan" name="filter_bulanan" domain="[('tipe', '=', 'bulanan')]"/>
+                <group>
+                    <filter string="Tipe" name="group_tipe" context="{'group_by': 'tipe'}"/>
+                    <filter string="State" name="group_state" context="{'group_by': 'state'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_hociro_periode_upah" model="ir.actions.act_window">
+        <field name="name">Periode Upah</field>
+        <field name="res_model">hociro.periode.upah</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="view_hociro_periode_upah_search"/>
+    </record>
+
+    <menuitem id="menu_hociro_upah_menu" name="Upah" parent="menu_hociro_upah_root" sequence="15"/>
+    <menuitem id="menu_hociro_periode_upah" name="Periode Upah"
+              parent="menu_hociro_upah_menu"
+              action="action_hociro_periode_upah" sequence="10"/>
+    <!-- Menu "Pembayaran" menyusul setelah model hociro.pembayaran dibangun (§6.4, §9) -->
+
+</odoo>
