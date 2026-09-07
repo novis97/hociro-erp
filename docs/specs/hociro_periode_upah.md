@@ -220,4 +220,4 @@ Group by: Tipe, State.
 
 ---
 
-*Dokumen ini adalah input untuk Agent 2 (Claude Code Desktop). Perubahan desain hanya lewat Agent 1.*
+*Dokumen ini adalah input untuk Agent 2. Perubahan desain hanya lewat Agent 1.*

@@ -6,3 +6,7 @@ access_account_analytic_plan_hociro_manage,account.analytic.plan.hociro.manage,a
 access_account_analytic_account_hociro_readonly,account.analytic.account.hociro.readonly,analytic.model_account_analytic_account,base.group_user,1,0,0,0
 access_account_analytic_account_hociro_manage,account.analytic.account.hociro.manage,analytic.model_account_analytic_account,base.group_system,1,1,1,1
 access_account_analytic_line_hociro_readonly,account.analytic.line.hociro.readonly,analytic.model_account_analytic_line,base.group_user,1,0,0,0
+access_hociro_periode_upah_readonly,hociro.periode.upah.readonly,model_hociro_periode_upah,base.group_user,1,0,0,0
+access_hociro_periode_upah_manage,hociro.periode.upah.manage,model_hociro_periode_upah,base.group_system,1,1,1,1
+access_hociro_upah_line_readonly,hociro.upah.line.readonly,model_hociro_upah_line,base.group_user,1,0,0,0
+access_hociro_upah_line_manage,hociro.upah.line.manage,model_hociro_upah_line,base.group_system,1,1,1,1
