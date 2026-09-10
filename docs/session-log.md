@@ -4,6 +4,14 @@ Catatan status kerja di repo `hociro-erp`, ditulis di akhir sesi supaya sesi ber
 
 ---
 
+## -1. Update 2026-09-10 — `hociro.periode.upah` selesai, terverifikasi di production
+
+**Modul `hociro.periode.upah` (perhitungan periode upah mingguan/bulanan) sudah selesai dan lolos test end-to-end di production**, untuk periode Mingguan **2026-W24**.
+
+**Temuan saat test:** dua tukang — **Wak Andi** dan **Anak Bang Dedek** — tidak punya tarif upah di master data (`hr.employee`). Ini **bukan bug di modul**: data sumber untuk kedua tukang ini memang belum lengkap. Sudah dicatat sebagai pertanyaan terbuka ke **Mr. Ricoh** (perlu tarif upah harian/lembur untuk keduanya sebelum periode upah yang melibatkan mereka bisa dihitung penuh).
+
+---
+
 ## 0. Update 2026-09-04 — Checklist §5 poin instalasi LOLOS
 
 **Install `hociro_upah` ke database bersih (`test_bersih`) berhasil, tanpa error.** Ini menutup item yang paling banyak ditandai "belum" di log 2026-09-03 (lihat §1, §2, §4 poin 3 di bawah — semua merujuk balik ke sini).
