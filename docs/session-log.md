@@ -4,6 +4,95 @@ Catatan status kerja di repo `hociro-erp`, ditulis di akhir sesi supaya sesi ber
 
 ---
 
+## -5. Update 2026-09-11 — Prasyarat issue #4 tuntas: nol migrasi, constraint unik masuk scope, mekanisme `line_id` terbukti
+
+**Konteks:** dua sesi terpisah (Agent 3 di VPS untuk verifikasi data + uji prototipe, Agent 2 di dev lokal untuk komentar issue + branch prototipe). Semua prasyarat sebelum implementasi issue #4 sekarang tuntas. Tidak ada perubahan kode di `main`.
+
+### Verifikasi data production (`hociro_prod`)
+
+Satu-satunya periode di production: **id=1, Mingguan 2026-W24** (2026-06-14 s/d 2026-06-20), state `dihitung`, 7 line. **Tidak ada periode bertipe `bulanan` di production** — periode bulanan sejauh ini hanya ada di `test_bersih_5`.
+
+Seluruh 7 line: `bonus` = 0, `total_dibayar` = 0, `saldo_awal` = 0. Nol data manual.
+
+→ **Issue #4 tidak butuh langkah migrasi data.** Bagian "Migrasi" dihapus dari scope-nya.
+
+Catatan: **Wak Andi** dan **Anak Bang Dedek** muncul dengan `saldo_akhir` = 0 karena belum punya tarif (lihat §-1). Konsekuensi yang sudah diketahui: begitu Mr. Ricoh memberi tarif mereka, W24 harus dihitung ulang — dan saat itu guard issue #1 serta predecessor/successor lock issue #2 sudah berlaku, jadi jalurnya akan berbeda dari sekarang.
+
+### Temuan: `(periode_id, employee_id)` tidak dijamin unik
+
+Tidak ada unique constraint pada `(periode_id, employee_id)` di `hociro.upah.line` — tidak di Postgres (hanya PK pada `id` + FK biasa), tidak di model. Faktanya nol duplikat di `hociro_prod` maupun `test_bersih_5`, dan `_prepare_line_vals()` tidak bisa menghasilkan duplikat lewat jalur normal karena `employees` berasal dari recordset yang otomatis terdeduplikasi (`mapped()` / `search()`). Tapi itu jaminan **by convention**, bukan struktural: `create()` langsung, import, atau modul lain bisa menghasilkan duplikat.
+
+Ini bukan detail kebersihan. `line_id` computed pada `hociro.upah.penyesuaian` melakukan lookup berdasarkan `(periode, employee)`. Dua line berarti lookup mengembalikan salah satu secara arbitrer, dan penyesuaian menempel ke line yang mungkin bukan yang dilihat user — gejalanya "bonus tidak muncul" atau "muncul di baris yang salah", tanpa error, tanpa jejak.
+
+→ **Constraint unik masuk scope issue #4.** Bentuknya **`models.Constraint`, bukan `_sql_constraints`** (dihapus di Odoo 19 — lihat `v19-conventions.md` §1.9, sudah pernah memicu warning di modul ini). Mengikuti pola `hociro_absensi_tukang.py:46` / `hociro_absensi_staf.py:36`. Nol duplikat di kedua database berarti migrasi constraint harus lolos di percobaan pertama.
+
+### Branch prototipe
+
+Branch **`prototipe/penyesuaian-line-id`** dibuat Agent 2 dari `main` dan di-push ke origin. **Tidak di-merge**, `main` tetap di `92e34be`. Isinya minimal: model `hociro.upah.penyesuaian` (`periode_id`, `employee_id`, `nilai`, `line_id` computed store), `penyesuaian_ids` One2many di `hociro.upah.line`, pemanggilan recompute eksplisit setelah `create()` di `action_hitung_upah()`, satu baris access rights. Tanpa view, tanpa jenis `koreksi`, tanpa perhitungan `upah_kotor` — hanya secukupnya untuk mengamati mekanismenya.
+
+Checklist §5 `v19-conventions.md` poin grep lolos semua. Poin instalasi dijalankan Agent 3 di VPS (mesin dev tidak punya Odoo/Docker lokal).
+
+### Uji mekanisme `line_id` — LOLOS
+
+Dijalankan di **database salinan `test_prototipe`** (dibuat `createdb -T` dari `test_bersih_5`), lewat **container `odoo:19.0` sekali pakai** (`--rm`) yang mount `repo-prototipe/addons` → `/mnt/extra-addons`, join network `hociro-erp_default`. Alasan isolasi ini: `/opt/hociro-erp/repo` bind-mounted ke Odoo production, jadi `git checkout` branch di situ akan membuat kode dan skema `hociro_prod` tidak sinkron. Dan `test_bersih_5` tidak dipakai langsung karena memuat hasil verifikasi carry-over saldo (§-2) yang harus tetap utuh sebagai referensi.
+
+Periode uji: id=2, tipe `bulanan`, state `dihitung` (data `test_bersih_5`, bukan production).
+
+| Tahap | Nilai |
+|---|---|
+| Line lama sebelum hitung ulang | id=10, employee_id=2 (Staf A) |
+| `penyesuaian.line_id` setelah create | 10 — cocok |
+| Line baru setelah `action_hitung_upah()` | id=22 |
+| Line lama id=10 masih ada? | tidak, sudah terhapus |
+| `line_id` di kolom DB mentah, dibaca `cr.execute()` **sebelum** disentuh Python | **22** |
+| `_compute_line_id()` dipanggil manual | 22 (sama) |
+| `employee_id` pada penyesuaian | 2 (Staf A), tidak berpindah |
+
+Pembacaan lewat SQL mentah itu penting: dia menutup kemungkinan bahwa recompute terpicu oleh akses ORM di skrip ujinya sendiri. Nilainya sudah benar di database sebelum Python menyentuh record itu.
+
+**Catatan: percobaan pertama crash `MissingError`** karena skrip uji menyimpan referensi recordset lama melintasi `action_hitung_upah()` lalu mengaksesnya. Itu bug di skrip uji, bukan di prototipe; transaksi ter-rollback penuh dan diverifikasi bersih sebelum diulang dengan skrip yang menyimpan `employee_id` sebagai integer biasa.
+
+### Temuan perilaku ORM yang membatalkan asumsi di issue #4
+
+Issue #4 menyatakan pemanggilan recompute eksplisit setelah `create()` **wajib**, dengan alasan `line_id` bergantung pada `periode_id`/`employee_id` yang tidak berubah saat line dibuat ulang. **Asumsi itu salah.** Odoo ternyata tetap memicu recompute pada field Many2one computed+stored saat record yang ditunjuknya di-`unlink`, terlepas dari `@api.depends` yang dideklarasikan. Dugaan mekanismenya: ORM menandai field computed+stored yang menunjuk ke record terhapus sebagai "to recompute" (bukan sekadar `SET NULL` di level FK), lalu memicu compute ulang pada flush berikutnya — di sini terpicu oleh `create()` line baru dalam `action_hitung_upah()` yang sama.
+
+**Konsekuensi untuk implementasi — pemanggilan eksplisit tetap dipertahankan**, tapi statusnya berubah dari "wajib" jadi "jaring pengaman yang idempoten". Alasannya: perilaku di atas adalah detail internal ORM, tidak terdokumentasi, dan bisa berubah di versi Odoo berikutnya. Uji membuktikan `_compute_line_id()` manual menghasilkan nilai sama (22), jadi memanggilnya tidak merugikan.
+
+**Komentar di kode prototipe baris 20-23 SALAH dan harus dikoreksi saat implementasi penuh** — komentar itu menyatakan recompute "sengaja tidak bisa menangkap" kasus line lama dihapus/line baru dibuat. Komentar yang salah lebih berbahaya daripada tidak ada komentar.
+
+### Catatan FK `line_id`
+
+`line_id` terbentuk sebagai FK dengan **`ON DELETE SET NULL`** (default Odoo untuk Many2one non-required). Ini perilaku yang diinginkan: penyesuaian tidak ikut terhapus saat line di-unlink, dia jadi NULL sementara lalu terisi ulang.
+
+**Jangan menambahkan `ondelete='cascade'` pada `line_id`** di implementasi penuh — kalau iya, penyesuaian terhapus bersama line dan seluruh mekanismenya gagal. `ondelete='cascade'` hanya untuk `periode_id`.
+
+### Sisa yang sengaja dibiarkan di VPS dan origin
+
+- **`/opt/hociro-erp/repo-prototipe`** — clone kedua, branch `prototipe/penyesuaian-line-id`. Dibiarkan, mungkin masih dibutuhkan. **Bukan sisa yang terlupakan.**
+- Branch **`prototipe/penyesuaian-line-id`** di origin — dibiarkan sampai implementasi penuh selesai, baru dibuang.
+- Database `test_prototipe` **sudah di-drop** setelah uji.
+
+### Pembersihan git di VPS
+
+`/opt/hociro-erp/repo` sebelumnya diverge dari `origin/main` (2 commit lokal vs 4 di origin) — sisa dari `git am` di mesin lain yang mengubah hash. Diverifikasi dulu bahwa isi kedua commit lokal sudah ada di origin (`git diff HEAD origin/main` pada kedua file: bug doc nol perbedaan; session-log hanya dua baris yang memang sengaja diganti — judul lama dan baris penutup lama), baru `git reset --hard origin/main`. Sekarang sinkron di `92e34be`, working tree bersih.
+
+`reset --hard` aman di sini hanya karena dua hal yang keduanya sudah terverifikasi: working tree bersih, dan isi commit lokal sudah ada di origin. Bukan perintah yang boleh jadi kebiasaan.
+
+### Status
+
+**Semua prasyarat issue #4 tuntas.** Implementasi penuh bisa dimulai. Urutan yang sudah dikunci di §-4 tidak berubah: issue #1 + #2 (guard) → issue #4 → issue #3.
+
+Aturan parkir `x_batas_jam_disiplin` **tetap berlaku** sampai issue #3 selesai.
+
+### Catatan operasional VPS (belum dikerjakan)
+
+- Banner login masih menampilkan `*** System restart required ***`, dan jumlah update tertunda bergeser (68 → 63) — artinya ada paket teraplikasi tanpa restart, jadi server berjalan dengan kernel lama sementara paketnya sudah baru. **Perlu dijadwalkan**, karena restart berarti Odoo down sebentar. Bukan keputusan yang boleh diambil agent di tengah sesi kerja.
+- Login ke VPS masih sebagai `root`, dan sandbox Claude Code di mesin itu mati. Kombinasi itu berarti dialog "allow reads outside working directories" sebaiknya selalu dijawab "sekali ini saja", bukan "selalu".
+- `~/.ssh` di mesin dev Windows memuat 8 file kunci tanpa label jelas, termasuk `id_rsa` lama. Kunci untuk VPS ini adalah `id_ed25519_103_77_106_214`, sekarang sudah terdaftar di `~/.ssh/config` sebagai host `hociro`. Sisanya layak dibersihkan — catatan, bukan tugas mendesak.
+- Folder induk di mesin dev sudah di-rename dari `erp-hociro` menjadi **`odoo-hociro`** supaya tidak tertukar dengan repo `hociro-erp` (dua nama yang cuma beda urutan kata sudah dua kali menyebabkan perintah git dijalankan di direktori yang salah). Repo git tetap bernama `hociro-erp`.
+
+---
+
 ## -4. Update 2026-09-11 — Verifikasi kode Agent 3, empat keputusan dikunci, issue #4 dibuat
 
 **Konteks:** sesi ini (Claude Code Desktop, dev lokal) menindaklanjuti §-3 di atas. Agent 3 sudah memverifikasi langsung ke kode nama field dan asumsi yang sebelumnya belum dicek di issue #2, dan verifikasi itu juga menyingkap dua masalah baru pada field input manual (`bonus`, `hari_lembur_staf`). Tidak ada perubahan kode di sesi ini — murni dokumentasi dan issue GitHub.
@@ -33,8 +122,8 @@ Catatan status kerja di repo `hociro-erp`, ditulis di akhir sesi supaya sesi ber
 - Issue #3 **tidak disentuh** di sesi ini.
 
 **Status: implementasi keempat issue di atas masih belum dimulai.** Verifikasi field yang jadi salah satu prasyarat penundaan sebelumnya sudah selesai (poin ini tuntas). Yang masih menunggu:
-1. Verifikasi lapangan production: apakah periode Mingguan 2026-W24 punya `bonus`/`total_dibayar` terisi (dibutuhkan migrasi issue #4 kalau ya) — belum dicek.
-2. Uji mekanisme `line_id` recompute (issue #4) di `test_bersih_5` — belum dijalankan, disyaratkan selesai sebelum menulis sisa implementasi issue #4.
+1. ~~Verifikasi lapangan production: apakah periode Mingguan 2026-W24 punya `bonus`/`total_dibayar` terisi (dibutuhkan migrasi issue #4 kalau ya) — belum dicek.~~ — **RESOLVED 2026-09-11**: nol data manual di W24, bagian "Migrasi" dihapus dari scope issue #4. Lihat §-5.
+2. ~~Uji mekanisme `line_id` recompute (issue #4) di `test_bersih_5` — belum dijalankan, disyaratkan selesai sebelum menulis sisa implementasi issue #4.~~ — **RESOLVED 2026-09-11**: mekanisme LOLOS uji, dengan temuan penting bahwa Odoo ternyata sudah memicu recompute otomatis sendiri (recompute eksplisit dipertahankan sebagai jaring pengaman, bukan lagi "wajib"). Lihat §-5.
 
 ---
 
