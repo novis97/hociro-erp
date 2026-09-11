@@ -10,3 +10,4 @@ access_hociro_periode_upah_readonly,hociro.periode.upah.readonly,model_hociro_pe
 access_hociro_periode_upah_manage,hociro.periode.upah.manage,model_hociro_periode_upah,base.group_system,1,1,1,1
 access_hociro_upah_line_readonly,hociro.upah.line.readonly,model_hociro_upah_line,base.group_user,1,0,0,0
 access_hociro_upah_line_manage,hociro.upah.line.manage,model_hociro_upah_line,base.group_system,1,1,1,1
+access_hociro_upah_penyesuaian_prototipe,hociro.upah.penyesuaian.prototipe,model_hociro_upah_penyesuaian,base.group_user,1,1,1,1

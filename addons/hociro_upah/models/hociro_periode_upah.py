@@ -77,6 +77,15 @@ class HociroPeriodeUpah(models.Model):
             vals_list = rec._prepare_line_vals()
             if vals_list:
                 self.env['hociro.upah.line'].create(vals_list)
+            # PROTOTIPE: line_id di hociro.upah.penyesuaian depends hanya pada
+            # (periode_id, employee_id), yang tidak berubah saat line lama
+            # di-unlink dan line baru dibuat -- Odoo tidak akan invalidasi
+            # apalagi recompute sendiri. Recompute eksplisit di sini adalah
+            # mekanisme yang sedang diuji.
+            penyesuaian = self.env['hociro.upah.penyesuaian'].search([
+                ('periode_id', '=', rec.id),
+            ])
+            penyesuaian._compute_line_id()
             rec.state = 'dihitung'
 
     def action_tutup_periode(self):
@@ -201,6 +210,12 @@ class HociroUpahLine(models.Model):
         compute='_compute_saldo_akhir', store=True,
     )
     catatan = fields.Char()
+    # PROTOTIPE — untuk mengamati apakah line_id di hociro.upah.penyesuaian
+    # tetap menunjuk ke line yang benar setelah regenerate. Lihat
+    # hociro_upah_penyesuaian.py.
+    penyesuaian_ids = fields.One2many(
+        'hociro.upah.penyesuaian', 'line_id', string='Penyesuaian (prototipe)',
+    )
 
     # Field ini TIDAK auto-refresh kalau absensi diedit setelah line dibuat
     # — harus klik "Hitung Upah" ulang untuk sinkron.
