@@ -8,7 +8,9 @@ Dokumen ini memuat cara membuat database uji baru dari `scripts/seed_test_data.p
 
 ## 1. Cara menjalankan
 
-Ditulis untuk orang yang belum pernah melakukannya. Perintah `docker compose` di bawah mengikuti pola yang sudah dipakai di `docs/setup-odoo-docker-agent3.md` §3 dan §9 — sesuaikan nama service/container kalau environment-mu berbeda.
+Ditulis untuk orang yang belum pernah melakukannya.
+
+**Jangan jalankan `-i`/`odoo shell` lewat `docker compose exec` ke container `odoo` yang sedang jalan.** Itu proses production yang sama yang melayani Mr. Ricoh (`hociro-erp-odoo-1`). VPS ini 3GB RAM, dan `docs/session-log.md` §4 poin 1 mencatat swap **belum pernah diverifikasi aktif** — memasang modul (`-i`) di proses yang sedang melayani, di RAM sesempit itu tanpa kepastian swap, adalah kombinasi yang bisa memicu OOM dan menjatuhkan Odoo yang sedang dipakai. Di luar soal memori, bekerja langsung di proses production untuk keperluan uji adalah risiko yang tidak perlu diambil sama sekali ketika alternatifnya cuma satu perintah `docker run` tambahan. Karena itu semua perintah di bawah memakai **container `odoo:19.0` sekali pakai** (`--rm`) yang terpisah dari container production — pola yang sama seperti dipakai di `docs/session-log.md` §-5 dan §-6. Container sekali pakai ini tetap tersambung ke Postgres yang sama (network `hociro-erp_default`), tapi prosesnya sendiri berumur sepanjang satu perintah saja — kalau dia OOM, yang mati cuma dia, bukan Odoo yang dipakai Mr. Ricoh.
 
 ### 1.1 Buat database kosong + pasang modul
 
@@ -16,22 +18,41 @@ Nama database **harus** diawali `test_` — skrip seed menolak jalan kalau tidak
 
 ```bash
 cd /opt/hociro-erp
-docker compose exec -T odoo \
+set -a; source .env; set +a   # supaya $POSTGRES_USER / $POSTGRES_PASSWORD terisi
+
+docker run --rm \
+    --network hociro-erp_default \
+    -e HOST=db \
+    -e USER="$POSTGRES_USER" \
+    -e PASSWORD="$POSTGRES_PASSWORD" \
+    -v "$(pwd)/repo/addons:/mnt/extra-addons" \
+    -v "$(pwd)/config:/etc/odoo" \
+    odoo:19.0 \
     odoo -d test_seed_upah_v1 -i hociro_upah --stop-after-init
 ```
 
-Perintah `-i` dengan nama database yang belum ada akan **membuat database itu sekaligus memasang modulnya** — tidak perlu `createdb` terpisah. Pastikan log tidak ada traceback (sama seperti checklist instalasi `v19-conventions.md` §5 poin 7).
+`HOST=db` merujuk ke nama service Postgres di `docker-compose.yml` (§3 `docs/setup-odoo-docker-agent3.md`), dijangkau lewat network compose `hociro-erp_default` — bukan container baru, database yang sama dengan production, cuma nama database (`-d`) yang beda. Perintah `-i` dengan nama database yang belum ada akan **membuat database itu sekaligus memasang modulnya** — tidak perlu `createdb` terpisah. Pastikan log tidak ada traceback (sama seperti checklist instalasi `v19-conventions.md` §5 poin 7).
 
 Kalau mau memastikan tidak ada demo data yang ikut terpasang (opsional — seed ini tidak terpengaruh demo data `hr` karena hanya membuat employee baru dan tidak membaca employee yang sudah ada), tambahkan `--without-demo=all` ke perintah di atas.
 
 ### 1.2 Jalankan skrip seed lewat `odoo shell`
 
 ```bash
-docker compose exec -T odoo \
+cd /opt/hociro-erp
+set -a; source .env; set +a
+
+docker run --rm -i \
+    --network hociro-erp_default \
+    -e HOST=db \
+    -e USER="$POSTGRES_USER" \
+    -e PASSWORD="$POSTGRES_PASSWORD" \
+    -v "$(pwd)/repo/addons:/mnt/extra-addons" \
+    -v "$(pwd)/config:/etc/odoo" \
+    odoo:19.0 \
     odoo shell -d test_seed_upah_v1 < repo/scripts/seed_test_data.py
 ```
 
-**Wajib lewat `odoo shell`**, bukan `python3 scripts/seed_test_data.py` langsung — skrip memakai variabel `env` yang cuma tersedia di dalam sesi `odoo shell`.
+`-i` pada `docker run` (bukan `-it`) wajib supaya isi `scripts/seed_test_data.py` yang di-*redirect* lewat `<` benar-benar sampai ke stdin container — tanpa itu skrip tidak akan terbaca. **Wajib lewat `odoo shell`**, bukan `python3 scripts/seed_test_data.py` langsung — skrip memakai variabel `env` yang cuma tersedia di dalam sesi `odoo shell`.
 
 Kalau berhasil, output diakhiri ringkasan:
 ```
@@ -49,7 +70,24 @@ Kalau skrip menolak jalan dengan pesan soal nama database atau data lama — bac
 
 ### 1.3 Membuat periode untuk pengujian
 
-Seed **tidak** membuat `hociro.periode.upah` — buat sendiri sesuai skenario ujimu, lewat UI atau shell. Contoh lewat shell, untuk mereproduksi baseline di §3 dan §4 dokumen ini:
+Seed **tidak** membuat `hociro.periode.upah` — buat sendiri sesuai skenario ujimu, lewat UI atau shell. Untuk shell interaktif (bukan skrip yang di-*pipe*), pakai container sekali pakai yang sama dengan `-it` alih-alih `-i`:
+
+```bash
+cd /opt/hociro-erp
+set -a; source .env; set +a
+
+docker run --rm -it \
+    --network hociro-erp_default \
+    -e HOST=db \
+    -e USER="$POSTGRES_USER" \
+    -e PASSWORD="$POSTGRES_PASSWORD" \
+    -v "$(pwd)/repo/addons:/mnt/extra-addons" \
+    -v "$(pwd)/config:/etc/odoo" \
+    odoo:19.0 \
+    odoo shell -d test_seed_upah_v1
+```
+
+Lalu ketik/tempel langsung di prompt shell yang muncul. Contoh, untuk mereproduksi baseline di §3 dan §4 dokumen ini:
 
 ```python
 # Periode Bulanan Juli 2026
