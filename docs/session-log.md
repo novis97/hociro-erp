@@ -4,6 +4,30 @@ Catatan status kerja di repo `hociro-erp`, ditulis di akhir sesi supaya sesi ber
 
 ---
 
+## -3. Update 2026-09-11 — Cek divergensi, pindahkan 2 commit VPS, buat 3 issue
+
+**Konteks:** sesi ini (Claude Code Desktop, dev lokal) menjalankan tugas administratif murni — tidak ada perubahan kode. Tujuan: memindahkan commit yang tertahan di VPS (§-2 di atas) dan membuat issue GitHub untuk dua bug yang belum punya issue, plus komentar keputusan di issue #1. Desain perbaikan ketiganya sudah disepakati di sesi lain sebelum sesi ini jalan.
+
+**Cek divergensi (dilakukan sebelum tindakan apa pun, sesuai instruksi):** `git fetch origin` tidak menemukan perubahan baru; HEAD lokal sudah identik dengan `origin/main` (`40d1eda`), working tree bersih, tidak ada yang perlu di-rebase. Commit `3e33305` ("read upah", author `novis97 <novis97@gmail.com>`, 2026-09-03) yang sempat dicurigai asal-usulnya — ternyata sudah lama jadi bagian sah dari riwayat `main` (ancestor `origin/main`), bukan commit baru yang divergen. Tidak ada tindakan git berisiko yang diperlukan.
+
+**Dua commit dari VPS berhasil diterapkan** via `git am` dari patch (`git format-patch`) tanpa konflik, lalu di-push ke `origin/main`:
+- `437e928` — dokumentasi bug saldo_awal stale (`docs/bugs/saldo-awal-stale-snapshot-lintas-periode.md`), sebelumnya `90ebb34` di VPS sebelum hash berubah karena format-patch/am.
+- `499003a` — update entri `-2.` di file ini (isinya sudah ada di atas).
+
+**Tiga issue GitHub dibuat/diperbarui** (label `prioritas-tinggi` dan `hociro_upah` dibuat baru di repo, sebelumnya belum ada):
+- [Issue #2](https://github.com/novis97/hociro-erp/issues/2) — `saldo_awal` stale snapshot lintas periode. Desain: successor lock (`_get_penerus()` + guard di `action_hitung_upah()`/`action_buka_kembali()`), state `ditutup`→`dikonfirmasi`, line saldo-only untuk karyawan archived.
+- [Issue #3](https://github.com/novis97/hociro-erp/issues/3) — tarif & batas jam disiplin dibaca dari master data terkini alih-alih snapshot historis. Desain: model baru `hociro.parameter.karyawan` (nilai berlaku per tanggal, lookup `berlaku_mulai <= T`), `@api.depends` pada `_compute_dapat_disiplin` **sengaja** dilepas dari `x_batas_jam_disiplin`.
+- Komentar di [issue #1](https://github.com/novis97/hociro-erp/issues/1) — keputusan: guard murah dulu (blokir `action_hitung_upah()` kalau ada `bonus`/`hari_lembur_staf`/`total_dibayar` terisi), pisah model (`hociro.upah.penyesuaian`) ditunda sampai setelah UAT Periode Bulanan dengan Mr. Ricoh. Issue #1 **tidak ditutup**, label tidak diubah (sesuai batasan tugas).
+
+**Aturan parkir yang masih berlaku — penting untuk sesi berikutnya:** jangan isi `x_batas_jam_disiplin` di `hr.employee` dengan jawaban cutoff dari Mr. Ricoh sampai model `hociro.parameter.karyawan` (issue #3) selesai dibangun. Mengisinya akan memicu `_compute_dapat_disiplin` (`store=True`, `@api.depends` masih menyertakan field itu untuk saat ini) me-recompute `dapat_disiplin` di seluruh riwayat absensi staf tersebut secara otomatis dalam satu `write()`, tanpa jejak dan tanpa cara membatalkannya.
+
+**Status: implementasi ketiga issue di atas belum dimulai.** Menunggu tiga hal sebelum mulai coding:
+1. Hasil verifikasi kode dari Agent 3 (nama field `tipe_periode`/`jenis`, `tanggal_mulai`, `tanggal_selesai`, `line_ids` di `hociro.periode.upah` yang dipakai di issue #2 masih asumsi dari dokumentasi, belum dicek langsung ke `models/hociro_periode_upah.py`).
+2. Keputusan user soal aturan parkir di atas (kapan/apakah cutoff Mr. Ricoh boleh langsung masuk vs menunggu issue #3).
+3. Konfirmasi final nama field yang dipakai di ketiga issue setelah poin 1 selesai.
+
+---
+
 ## -2. Update 2026-09-10 — Pengujian periode Bulanan staf di `test_bersih_5`, dua bug ditemukan
 
 **Konteks:** sesi ini berjalan di VPS (bukan mesin dev lokal), dengan akses ke Docker (`hociro-erp-db-1`/`hociro-erp-odoo-1`) dan lima database `test_bersih*` yang sudah ada sebelumnya. Sebelum membuat dummy data, kelima database dicek: modul `hociro_upah` `installed` di semua lima, tapi hanya **`test_bersih_5`** yang skemanya lengkap (punya keempat tabel `hociro_absensi_staf`, `hociro_absensi_tukang`, `hociro_periode_upah`, `hociro_upah_line` sesuai kode addon saat ini) **dan** masih kosong datanya. `test_bersih`, `_2`, `_3` cuma punya `hociro_absensi_tukang` (skema lama/stale), `_4` cuma tambah `hociro_absensi_staf`. Jadi `test_bersih_5` dipakai untuk seluruh pengujian di bawah.
