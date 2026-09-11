@@ -1,6 +1,6 @@
 from odoo import api, fields, models
 from odoo.exceptions import UserError
-from odoo.tools import float_is_zero
+from odoo.tools import float_compare, float_is_zero
 
 
 class HociroPeriodeUpah(models.Model):
@@ -77,6 +77,7 @@ class HociroPeriodeUpah(models.Model):
             rec._check_predecessor_lock()
             rec._check_successor_lock()
             vals_list = rec._prepare_line_vals()
+            rec._check_nilai_manual(vals_list)
             rec.line_ids.unlink()
             if vals_list:
                 self.env['hociro.upah.line'].create(vals_list)
@@ -157,6 +158,53 @@ class HociroPeriodeUpah(models.Model):
                 f'{penerus.name}, perbaiki periode ini, baru buat ulang periode '
                 f'{penerus.name}.'
             )
+
+    def _check_nilai_manual(self, vals_list):
+        """Guard issue #1: blokir kalau total_dibayar atau saldo_awal yang
+        tersimpan berbeda dari nilai yang akan dihasilkan vals_list untuk
+        karyawan itu. BUKAN aturan "!= 0" -- saldo_awal bukan-nol adalah
+        kondisi normal untuk periode kedua dst (hasil carry-over yang sah),
+        jadi guard hanya menyala kalau user benar-benar menimpanya manual.
+        bonus dan hari_lembur_staf SENGAJA tidak dijaga di sini: yang
+        pertama akan pindah ke hociro.upah.penyesuaian (issue #4), yang
+        kedua tidak pernah dirender di view mana pun sehingga tidak bisa
+        terisi siapa pun.
+        """
+        self.ensure_one()
+        if not self.line_ids:
+            return
+        rounding = self.currency_id.rounding
+        prepared_by_employee = {vals['employee_id']: vals for vals in vals_list}
+        pesan_list = []
+        for line in self.line_ids:
+            prepared = prepared_by_employee.get(line.employee_id.id, {})
+            prepared_total_dibayar = prepared.get('total_dibayar', 0.0)
+            prepared_saldo_awal = prepared.get('saldo_awal', 0.0)
+            if float_compare(line.total_dibayar, prepared_total_dibayar, precision_rounding=rounding) != 0:
+                pesan_list.append(
+                    f'{line.employee_id.name} — Total Dibayar: '
+                    f'{self._format_rupiah(line.total_dibayar)}'
+                )
+            if float_compare(line.saldo_awal, prepared_saldo_awal, precision_rounding=rounding) != 0:
+                pesan_list.append(
+                    f'{line.employee_id.name} — Saldo Awal: '
+                    f'{self._format_rupiah(line.saldo_awal)} (hitungan otomatis: '
+                    f'{self._format_rupiah(prepared_saldo_awal)})'
+                )
+        if not pesan_list:
+            return
+        daftar = '\n'.join(f'- {p}' for p in pesan_list)
+        raise UserError(
+            'Periode ini nggak bisa dihitung ulang, karena ada angka yang '
+            'diisi manual dan bakal hilang kalau dihitung ulang:\n\n'
+            f'{daftar}\n\n'
+            'Catat dulu angka-angka di atas, kosongkan isinya, baru hitung '
+            'ulang. Setelah selesai, isi lagi angkanya.'
+        )
+
+    @staticmethod
+    def _format_rupiah(value):
+        return 'Rp {:,.0f}'.format(value).replace(',', '.')
 
     def _prepare_line_vals(self):
         self.ensure_one()
