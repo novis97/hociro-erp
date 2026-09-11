@@ -1,6 +1,40 @@
-# Session Log — 2026-09-03
+# Session Log — 2026-09-03 s/d 2026-09-11
 
 Catatan status kerja di repo `hociro-erp`, ditulis di akhir sesi supaya sesi berikutnya (siapa pun yang melanjutkan — manusia atau agent) tidak perlu membaca ulang seluruh transkrip.
+
+---
+
+## -4. Update 2026-09-11 — Verifikasi kode Agent 3, empat keputusan dikunci, issue #4 dibuat
+
+**Konteks:** sesi ini (Claude Code Desktop, dev lokal) menindaklanjuti §-3 di atas. Agent 3 sudah memverifikasi langsung ke kode nama field dan asumsi yang sebelumnya belum dicek di issue #2, dan verifikasi itu juga menyingkap dua masalah baru pada field input manual (`bonus`, `hari_lembur_staf`). Tidak ada perubahan kode di sesi ini — murni dokumentasi dan issue GitHub.
+
+**Hasil verifikasi kode Agent 3:**
+- Field pembeda siklus periode adalah **`tipe`** (bukan `tipe_periode` seperti diasumsikan sebelumnya), nilai `mingguan`/`bulanan`. State draft dieja `draft` (Inggris). `tanggal_mulai`, `tanggal_selesai`, `line_ids` terkonfirmasi sesuai asumsi. Periode juga punya `name` (computed, store) untuk pesan error.
+- `hociro.upah.line` didefinisikan di file yang sama dengan `hociro.periode.upah` (`hociro_periode_upah.py`, class mulai baris 140) — tidak ada `hociro_upah_line.py` terpisah.
+- `_prepare_line_vals()` mengambil `saldo_awal` hanya dari periode berstatus `ditutup` — celah ini jadi dasar predecessor lock baru (lihat di bawah).
+- **Tidak ada `@api.constrains`/`models.Constraint` apa pun** pada `hociro.periode.upah` yang mencegah periode dibuat tidak berurutan atau tanggal tumpang tindih — mengonfirmasi predecessor lock bukan kekhawatiran teoretis.
+- **`hari_lembur_staf` tidak pernah dirender di view mana pun**, walau help text-nya bilang "input manual" — field ini tidak bisa diisi siapa pun lewat UI. **Konsekuensi: seluruh perhitungan upah staf yang pernah dijalankan (termasuk semua pengujian di `test_bersih_5`, §-2 di atas) menghitung lembur staf = nol.** Belum ada dampak production karena periode bulanan belum pernah dipakai di luar `test_bersih_5`.
+- **`bonus` disembunyikan untuk periode mingguan** (`column_invisible="parent.tipe != 'bulanan'"`) — tukang tidak bisa diberi bonus lewat UI sekarang, padahal user mengonfirmasi bonus untuk tukang akan terjadi.
+
+**Empat keputusan dikunci setelah verifikasi ini:**
+1. **Jenis koreksi masuk** — model baru `hociro.upah.penyesuaian` (issue #4) punya tiga `jenis`: `bonus`, `lembur_staf`, `koreksi`. `koreksi` adalah satu-satunya yang menerima nilai negatif, dipakai untuk mengalirkan perbaikan periode lampau **maju** ke periode berjalan (periode `ditutup` tetap tidak boleh dihitung ulang, sesuai issue #2).
+2. **Urutan implementasi: issue #4 sebelum issue #3.** Alasan: selama gap input lembur staf terbuka, periode bulanan tidak bisa masuk UAT sama sekali — itu memblokir jalur kerja lebih besar daripada compute tarif yang belum pindah ke lookup bertanggal. Urutan penuh sekarang: issue #1 + #2 (guard, kecil, tidak sentuh data) → **issue #4** (butuh diuji duluan mekanisme `line_id` recompute di `test_bersih_5`) → issue #3.
+3. **Aturan parkir `x_batas_jam_disiplin` tetap berlaku, ditegaskan ulang** — jangan isi field itu dengan jawaban cutoff Mr. Ricoh sampai issue #3 selesai. Berlaku juga selama pengerjaan issue #4 (yang dikerjakan duluan), karena `_compute_dapat_disiplin` belum berubah sampai #3 selesai.
+4. **State mapping `ditutup` → `dikonfirmasi` (poin 4 di desain issue #2 lama) DICABUT.** Verifikasi menunjukkan state machine yang diusulkan sudah ada dengan nama berbeda — `ditutup` sudah berfungsi persis seperti `dikonfirmasi` yang diusulkan, transisinya sudah dijaga `action_tutup_periode()`/`action_buka_kembali()`. Rename dibatalkan sepenuhnya: nol manfaat, menambah migrasi data dan mengubah label yang sudah dilihat user. State `dibayar` tetap menyusul bersama `hociro.pembayaran`, ditambahkan di atas `ditutup` yang sudah ada, bukan menggantikannya.
+
+**Temuan tambahan yang mengubah scope issue #2 — predecessor lock:** `_prepare_line_vals()` mengambil `saldo_awal` dari periode `ditutup` terakhir sebelum `tanggal_mulai`, dan filter `ditutup` itu berarti periode yang masih `draft`/`dihitung` **dilompati begitu saja**, bukan diblokir. Skenario: Juni ditutup → Juli dibuat tapi masih draft → Agustus dihitung, melompati Juli, mengambil saldo dari Juni → Agustus salah, tidak ada mekanisme yang tahu. Ini arah kebalikan dari successor lock (issue #2 asli memproteksi pendahulu dari perubahan; ini menangkap penerus yang dihitung terlalu dini). Guard baru ditambahkan ke issue #2 via komentar: `action_hitung_upah()` menolak kalau ada pendahulu (tipe sama, `tanggal_selesai` lebih awal) yang belum `ditutup`.
+
+**Revisi lain ke issue #1 (via komentar):** daftar field yang dijaga guard menyusut dari tiga jadi dua — `hari_lembur_staf` dikeluarkan (tidak pernah bisa diisi, jadi tidak ada yang perlu dijaga; ditangani di issue #4), `bonus` juga keluar (akan pindah ke `hociro.upah.penyesuaian`), tapi **`saldo_awal` masuk** (terkonfirmasi editable, satu-satunya jalan input saldo pembuka era Excel, dan hilang di regenerate pertama tanpa guard). Daftar final: `total_dibayar` dan `saldo_awal`. Aturan guard juga berubah dari "≠ 0" jadi "berbeda dari hasil `_prepare_line_vals()`" — supaya `saldo_awal` normal periode kedua dst tidak salah terblokir.
+
+**Tiga tindakan GitHub:**
+- [Issue #4](https://github.com/novis97/hociro-erp/issues/4) — dibuat baru. Model `hociro.upah.penyesuaian` (field: `periode_id`, `employee_id`, `jenis`, `nilai`, `keterangan` wajib, `line_id` computed store). `bonus`/`hari_lembur_staf` dihapus dari `hociro.upah.line`. Titik paling rapuh: `line_id` harus di-recompute eksplisit setelah `action_hitung_upah()` bikin ulang line, karena dependency-nya (`periode_id`/`employee_id`) tidak berubah saat line diganti — harus diuji duluan di `test_bersih_5` sebelum menulis sisa implementasi.
+- Komentar revisi di [issue #1](https://github.com/novis97/hociro-erp/issues/1) — daftar field guard & aturan guard direvisi (lihat di atas). Tidak ditutup, label tidak diubah.
+- Komentar revisi di [issue #2](https://github.com/novis97/hociro-erp/issues/2) — state mapping dicabut, nama field dikoreksi, predecessor lock ditambahkan (lihat di atas). Tidak ditutup, label tidak diubah.
+- Issue #3 **tidak disentuh** di sesi ini.
+
+**Status: implementasi keempat issue di atas masih belum dimulai.** Verifikasi field yang jadi salah satu prasyarat penundaan sebelumnya sudah selesai (poin ini tuntas). Yang masih menunggu:
+1. Verifikasi lapangan production: apakah periode Mingguan 2026-W24 punya `bonus`/`total_dibayar` terisi (dibutuhkan migrasi issue #4 kalau ya) — belum dicek.
+2. Uji mekanisme `line_id` recompute (issue #4) di `test_bersih_5` — belum dijalankan, disyaratkan selesai sebelum menulis sisa implementasi issue #4.
 
 ---
 
@@ -8,7 +42,7 @@ Catatan status kerja di repo `hociro-erp`, ditulis di akhir sesi supaya sesi ber
 
 **Konteks:** sesi ini (Claude Code Desktop, dev lokal) menjalankan tugas administratif murni — tidak ada perubahan kode. Tujuan: memindahkan commit yang tertahan di VPS (§-2 di atas) dan membuat issue GitHub untuk dua bug yang belum punya issue, plus komentar keputusan di issue #1. Desain perbaikan ketiganya sudah disepakati di sesi lain sebelum sesi ini jalan.
 
-**Cek divergensi (dilakukan sebelum tindakan apa pun, sesuai instruksi):** `git fetch origin` tidak menemukan perubahan baru; HEAD lokal sudah identik dengan `origin/main` (`40d1eda`), working tree bersih, tidak ada yang perlu di-rebase. Commit `3e33305` ("read upah", author `novis97 <novis97@gmail.com>`, 2026-09-03) yang sempat dicurigai asal-usulnya — ternyata sudah lama jadi bagian sah dari riwayat `main` (ancestor `origin/main`), bukan commit baru yang divergen. Tidak ada tindakan git berisiko yang diperlukan.
+**Cek divergensi (dilakukan sebelum tindakan apa pun, sesuai instruksi):** `git fetch origin` tidak menemukan perubahan baru; HEAD lokal sudah identik dengan `origin/main` (`40d1eda`), working tree bersih, tidak ada yang perlu di-rebase. Commit `3e33305` ("read upah", author `novis97 <novis97@gmail.com>`, 2026-09-03) yang sempat dicurigai — yang terjelaskan cuma **posisinya di riwayat**: sudah lama jadi ancestor sah dari `origin/main`, bukan commit baru yang divergen sekarang. **Asal-usulnya (siapa yang sebenarnya membuatnya) belum terkonfirmasi** — email author (`novis97@gmail.com`) berbeda dari akun yang biasa dipakai untuk commit di repo ini. Lihat juga catatan asli soal commit ini di §akhir file (entri 2026-09-03, poin 4).
 
 **Dua commit dari VPS berhasil diterapkan** via `git am` dari patch (`git format-patch`) tanpa konflik, lalu di-push ke `origin/main`:
 - `437e928` — dokumentasi bug saldo_awal stale (`docs/bugs/saldo-awal-stale-snapshot-lintas-periode.md`), sebelumnya `90ebb34` di VPS sebelum hash berubah karena format-patch/am.
@@ -220,4 +254,4 @@ docker compose exec -T odoo \
 
 ---
 
-*Ditulis di akhir sesi kerja 2026-09-03. File ini di-commit tapi (per instruksi) belum di-push — cek isinya dulu sebelum push.*
+*Ditulis di akhir sesi kerja 2026-09-03. Entri di atas menambah riwayat sampai 2026-09-11; lihat masing-masing entri untuk status commit/push saat entri itu ditulis.*
