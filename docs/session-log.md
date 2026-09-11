@@ -4,6 +4,98 @@ Catatan status kerja di repo `hociro-erp`, ditulis di akhir sesi supaya sesi ber
 
 ---
 
+## -6. Update 2026-09-11 — Guard issue #1 + #2 diimplementasikan dan terverifikasi; `test_bersih_5` tidak lagi valid sebagai baseline
+
+**Konteks:** dua sesi — Agent 2 (dev lokal) menulis implementasi, Agent 3 (VPS) mengujinya di database salinan terisolasi. Issue #2 tuntas sepenuhnya. Issue #1 tertutup sebagian; sisanya menunggu issue #4.
+
+### Implementasi
+
+Dua commit, keduanya hanya menyentuh `addons/hociro_upah/models/hociro_periode_upah.py`:
+
+- **`54f9dad`** (issue #2) — predecessor lock (`_get_pendahulu_belum_ditutup`, `_check_predecessor_lock`), successor lock (`_get_penerus`, `_check_successor_lock`), guard di `action_buka_kembali()`, line saldo-only untuk karyawan archived, dan pemindahan `vals_list = _prepare_line_vals()` ke atas `unlink()`.
+- **`11bb807`** (issue #1) — guard nilai manual `_check_nilai_manual()` + `_format_rupiah()`, dan `float_compare` ditambahkan ke import dari `odoo.tools`.
+
+Struktur `action_hitung_upah()` sekarang: guard `state == 'ditutup'` (sudah ada sebelumnya) → predecessor lock → successor lock → `_prepare_line_vals()` → guard nilai manual → `unlink()` → `create()` → `state = 'dihitung'`. **Keempat guard dievaluasi sebelum satu line pun dihapus.**
+
+Pemindahan `_prepare_line_vals()` diletakkan di commit issue #2 walaupun kebutuhannya berasal dari issue #1, supaya method itu tidak direstrukturisasi dua kali antar commit. Keputusan Agent 2, disetujui — riwayat git yang rapi per nomor issue tidak sebanding dengan kode yang dibongkar-pasang untuk memenuhinya.
+
+### Keputusan desain: guard nilai manual pakai perbandingan, bukan "≠ 0"
+
+Dua field yang dijaga: **`total_dibayar`** dan **`saldo_awal`**. Bukan tiga. `hari_lembur_staf` dikeluarkan karena tidak pernah dirender di view mana pun sehingga tidak bisa terisi siapa pun; `bonus` dikeluarkan karena akan pindah ke `hociro.upah.penyesuaian` (issue #4).
+
+Aturannya: blokir kalau nilai tersimpan **berbeda dari nilai yang akan dihasilkan `_prepare_line_vals()`** untuk karyawan itu, dibandingkan dengan `float_compare(..., precision_rounding=currency.rounding)`.
+
+Bukan "≠ 0", dan ini penting. Untuk `total_dibayar` hasil prepare selalu nol jadi kedua aturan setara. Tapi `saldo_awal` bukan-nol adalah **kondisi normal** periode kedua dan seterusnya (hasil carry-over yang sah) — aturan "≠ 0" akan menyala hampir selalu dan tombol Hitung Ulang praktis tidak bisa dipakai. Gejalanya bukan error, jadi tidak akan tertangkap checklist §5 dan baru ketemu saat user memakainya.
+
+`float_compare` dipakai, bukan operator `!=` mentah pada float, karena selisih pembulatan akan memicu false positive.
+
+### Hasil uji (Agent 3, database salinan `test_guard_1_2`)
+
+Isolasi: clone `repo-prototipe` dipindahkan dari branch prototipe ke `main` (`git checkout main && git reset --hard origin/main`, verifikasi `11bb807` → `54f9dad` → `50e9b7a`), database salinan dibuat `createdb -T test_bersih_5`, container `odoo:19.0` sekali pakai. `/opt/hociro-erp/repo` tidak pernah pindah branch — dia bind-mounted ke Odoo production.
+
+**Checklist §5 poin instalasi: LOLOS.** `odoo -u hociro_upah` sukses, 0.24s, 289 queries, tanpa traceback. Tidak ada `ImportError` pada `float_compare`/`float_is_zero` — satu-satunya asumsi API yang belum diverifikasi sebelumnya, sekarang tertutup.
+
+| Uji | Hasil |
+|---|---|
+| B — guard nilai manual menyala saat seharusnya | LOLOS. `total_dibayar` Rp 1.500.000 → `UserError` "Staf A (Dummy) — Total Dibayar: Rp 1.500.000", line id `[13,14,15]` identik sebelum/sesudah. `saldo_awal` ditimpa 9.999.999 → pesan memuat **dua** pelanggaran sekaligus, dengan format "Rp 9.999.999 (hitungan otomatis: Rp 6.555.000)". Line id `[10,11,12]` identik. |
+| C — successor lock | LOLOS. Penerus ber-line → `action_hitung_upah()` dan `action_buka_kembali()` keduanya `UserError` menyebut nama penerus. Penerus **kosong** → sukses, tidak diblokir. Tanpa penerus → sukses. Setelah penerus diisi line → baru diblokir. |
+| D — predecessor lock | LOLOS. Pendahulu `draft` → `UserError` menyebut namanya, `line_ids` tetap `[]`. Setelah pendahulu ditutup → sukses, 3 line dibuat (id 22-24). Periode pertama tanpa pendahulu → tidak diblokir. |
+| E — line saldo-only | LOLOS. Staf C archived dengan `saldo_akhir` 11.460.000 → tetap dapat line: `hari_hadir=0`, `upah_kotor=0`, `saldo_awal=11.460.000`. Staf B archived dengan `saldo_akhir=0` → tidak dapat line. |
+| F — skenario asli bug doc | LOLOS. `total_dibayar` 3.000.000 + koreksi absensi: dulu terhapus diam-diam, sekarang `UserError`, line id tetap 13, nilai tetap tersimpan. |
+
+### Uji A: guard menangkap kerusakan data lama, bukan gagal
+
+Uji A (periode kedua dengan `saldo_awal` carry-over normal harus **tidak** terblokir) awalnya dilaporkan gagal. Penyebabnya bukan guard.
+
+Di `test_bersih_5`, Staf A di Bulanan 2026-08 punya `saldo_awal` tersimpan **6.255.000**, sementara `saldo_akhir` Staf A di Bulanan 2026-07 adalah **6.120.000**. Selisih 135.000. Staf B dan C cocok persis.
+
+Itu **stale saldo yang tertinggal dari bug #2 sendiri** — sisa skenario buka-kembali yang dipakai untuk menemukan bug itu di sesi 2026-09-10 (§-2). Jadi guard baru mendeteksi kerusakan data yang ditinggalkan bug lama, di database yang sudah ada sebelum guard-nya ditulis.
+
+Diagnostik Agent 3 memisahkan kedua penyebab: setelah `saldo_awal` Staf A dinetralkan ke 6.120.000, `action_hitung_upah()` pada periode yang sama **sukses** dengan hasil identik sebelum/sesudah. Guard-nya benar; datanya yang rusak.
+
+### PENTING: `test_bersih_5` tidak lagi valid sebagai baseline regresi
+
+§-2 mencatat carry-over saldo di `test_bersih_5` "diuji dan LOLOS". Itu benar untuk keadaan Juli→Agustus **sebelum** skenario buka-kembali dijalankan, tapi **tidak benar untuk keadaannya sekarang** — `saldo_awal` Staf A di periode Agustus salah 135.000.
+
+Sesi berikutnya yang memakai `test_bersih_5` sebagai baseline perbandingan akan mendapat angka yang salah, dan kemungkinan menyimpulkan ada regresi di kode padahal datanya yang rusak.
+
+Opsi yang belum diputuskan: netralkan `saldo_awal` Staf A ke 6.120.000 (satu `UPDATE`, memulihkan konsistensi), atau buat database uji baru dari nol dengan seed yang terdokumentasi. Yang kedua lebih bersih tapi berarti kehilangan data uji yang sudah ada. **Belum dikerjakan — jangan pakai `test_bersih_5` sebagai pembanding angka sebelum ini diselesaikan.**
+
+### Temuan: line saldo-only menutup celah di guard nilai manual
+
+`_check_nilai_manual()` memakai `prepared_by_employee.get(line.employee_id.id, {})`, jadi karyawan yang punya line sekarang tapi tidak ada di `vals_list` akan mendapat `prepared_saldo_awal = 0.0` — dan kalau `saldo_awal` line-nya bukan-nol, guard menyala dengan pesan "hitungan otomatis: Rp 0" yang tidak menjelaskan bahwa karyawan itu akan keluar dari periode.
+
+Diuji dengan tukang sintetis, dua periode mingguan berurutan, absensi periode kedua dikoreksi (`dikuatkan` → `draft`). **Celahnya tidak muncul**: line saldo-only dari issue #2 menangkapnya lebih dulu — karyawan dengan `saldo_akhir` bukan-nol selalu dapat line, jadi selalu ada di `vals_list`, jadi `.get(..., {})` tidak pernah jatuh ke default. `prepared_saldo_awal` terisi benar (150.000 = 150.000, cocok), guard tidak menyala.
+
+**Dua guard yang dirancang untuk masalah berbeda saling menutup celah satu sama lain. Ini kebetulan, bukan desain — dan justru karena kebetulan, harus ditulis.** Kalau nanti line saldo-only dihapus atau kondisinya diubah (mis. saat implementasi issue #4 menyentuh `_prepare_line_vals()`), celah itu terbuka lagi dan tidak ada yang tahu kaitannya.
+
+Batas yang masih berlaku: celah itu tetap bisa muncul kalau `saldo_akhir` periode pendahulu **sendiri** sudah stale — yaitu varian Uji A, bukan lubang independen. Dan jalur itu sekarang tertutup oleh successor lock.
+
+### Status issue
+
+- **Issue #2 — tuntas.** Bisa ditutup. Semua AC terverifikasi, tidak ada sisa.
+- **Issue #1 — tertutup sebagian, tetap OPEN.** Guard melindungi `total_dibayar` (bridge sampai `hociro.pembayaran`) dan `saldo_awal`. Akar masalahnya — hasil kalkulasi dan input manusia disimpan di record yang sama — baru hilang setelah `hociro.upah.penyesuaian` (issue #4). Tutup setelah #4 selesai.
+
+### Berikutnya
+
+Urutan yang dikunci di §-4 tidak berubah: **issue #4** (`hociro.upah.penyesuaian`), lalu issue #3 (`hociro.parameter.karyawan`).
+
+Prasyarat issue #4 sudah tuntas semua (§-5). Yang perlu diingat saat implementasi:
+- Komentar di kode prototipe baris 20-23 **salah** dan harus dikoreksi (§-5).
+- **Jangan** `ondelete='cascade'` pada `line_id` — hanya untuk `periode_id` (§-5).
+- Constraint unik `(periode_id, employee_id)` masuk scope, bentuknya `models.Constraint` bukan `_sql_constraints` (§-5).
+- Issue #4 menyentuh `_prepare_line_vals()`; jangan sampai mengubah kondisi line saldo-only tanpa menyadari kaitannya dengan guard nilai manual (lihat temuan di atas).
+
+Aturan parkir `x_batas_jam_disiplin` **tetap berlaku** sampai issue #3 selesai.
+
+### Catatan clone di VPS
+
+`/opt/hociro-erp/repo-prototipe` sekarang di branch **`main`** (sebelumnya `prototipe/penyesuaian-line-id`). Branch prototipe masih ada di origin. Clone ini dipakai ulang untuk uji-uji berikutnya supaya `repo/` tidak pernah pindah branch — **bukan sisa yang terlupakan.**
+
+Database `test_guard_1_2` sudah di-drop.
+
+---
+
 ## -5. Update 2026-09-11 — Prasyarat issue #4 tuntas: nol migrasi, constraint unik masuk scope, mekanisme `line_id` terbukti
 
 **Konteks:** dua sesi terpisah (Agent 3 di VPS untuk verifikasi data + uji prototipe, Agent 2 di dev lokal untuk komentar issue + branch prototipe). Semua prasyarat sebelum implementasi issue #4 sekarang tuntas. Tidak ada perubahan kode di `main`.
