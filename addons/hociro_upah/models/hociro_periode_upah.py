@@ -1,5 +1,6 @@
 from odoo import api, fields, models
 from odoo.exceptions import UserError
+from odoo.tools import float_is_zero
 
 
 class HociroPeriodeUpah(models.Model):
@@ -73,8 +74,10 @@ class HociroPeriodeUpah(models.Model):
                     'Periode yang sudah ditutup tidak bisa dihitung ulang. '
                     'Buka kembali terlebih dahulu.'
                 )
-            rec.line_ids.unlink()
+            rec._check_predecessor_lock()
+            rec._check_successor_lock()
             vals_list = rec._prepare_line_vals()
+            rec.line_ids.unlink()
             if vals_list:
                 self.env['hociro.upah.line'].create(vals_list)
             rec.state = 'dihitung'
@@ -89,7 +92,71 @@ class HociroPeriodeUpah(models.Model):
         for rec in self:
             if rec.state != 'ditutup':
                 raise UserError('Hanya periode berstatus "Ditutup" yang bisa dibuka kembali.')
+            penerus = rec._get_penerus()
+            if penerus:
+                raise UserError(
+                    f'Periode ini nggak bisa dibuka kembali, karena periode {penerus.name} '
+                    'sudah dibuat dan angkanya ngambil saldo dari periode ini. Kalau '
+                    'angkanya keliru dan harus diperbaiki, hapus dulu periode '
+                    f'{penerus.name}, perbaiki periode ini, baru buat ulang periode '
+                    f'{penerus.name}.'
+                )
             rec.state = 'dihitung'
+
+    def _get_penerus(self):
+        """Periode dengan `tipe` sama yang mulai setelah periode ini selesai,
+        dan sudah punya minimal satu hociro.upah.line -- artinya sudah
+        menyerap saldo_awal dari periode ini lewat _prepare_line_vals().
+        Successor lock (issue #2): dipakai di action_hitung_upah() dan
+        action_buka_kembali(). Periode penerus yang masih kosong (belum
+        pernah "Hitung Upah") belum menyerap apa pun, jadi tidak mengunci --
+        kalau tidak, periode yang dibuat tidak berurutan akan mengunci
+        pendahulunya secara permanen padahal belum ada yang jadi stale.
+        """
+        self.ensure_one()
+        kandidat = self.env['hociro.periode.upah'].search([
+            ('tipe', '=', self.tipe),
+            ('tanggal_mulai', '>', self.tanggal_selesai),
+        ], order='tanggal_mulai asc')
+        return kandidat.filtered('line_ids')[:1]
+
+    def _get_pendahulu_belum_ditutup(self):
+        """Periode dengan `tipe` sama, tanggal_selesai lebih awal, yang
+        belum berstatus ditutup. Predecessor lock (issue #2): tanpa ini,
+        _prepare_line_vals() melompati periode seperti ini saat mencari
+        saldo_awal (hanya mengambil dari periode `ditutup` terakhir),
+        bukan memblokir -- sehingga periode ini bisa dihitung dengan
+        saldo_awal dari periode yang lebih lama, melompati satu pendahulu
+        yang belum ditutup, tanpa ada yang tahu.
+        """
+        self.ensure_one()
+        return self.env['hociro.periode.upah'].search([
+            ('tipe', '=', self.tipe),
+            ('tanggal_selesai', '<', self.tanggal_mulai),
+            ('state', '!=', 'ditutup'),
+        ], order='tanggal_selesai desc', limit=1)
+
+    def _check_predecessor_lock(self):
+        self.ensure_one()
+        pendahulu = self._get_pendahulu_belum_ditutup()
+        if pendahulu:
+            raise UserError(
+                f'Periode ini belum bisa dihitung, karena periode {pendahulu.name} '
+                'belum ditutup. Tutup dulu periode itu, supaya saldo yang terbawa '
+                'ke sini angkanya benar.'
+            )
+
+    def _check_successor_lock(self):
+        self.ensure_one()
+        penerus = self._get_penerus()
+        if penerus:
+            raise UserError(
+                f'Periode ini nggak bisa dihitung ulang, karena periode {penerus.name} '
+                'sudah dibuat dan angkanya ngambil saldo dari periode ini. Kalau '
+                'angkanya keliru dan harus diperbaiki, hapus dulu periode '
+                f'{penerus.name}, perbaiki periode ini, baru buat ulang periode '
+                f'{penerus.name}.'
+            )
 
     def _prepare_line_vals(self):
         self.ensure_one()
@@ -113,7 +180,9 @@ class HociroPeriodeUpah(models.Model):
         }
 
         vals_list = []
+        employee_ids_terjaring = set()
         for employee in employees:
+            employee_ids_terjaring.add(employee.id)
             vals = {
                 'periode_id': self.id,
                 'employee_id': employee.id,
@@ -134,6 +203,26 @@ class HociroPeriodeUpah(models.Model):
                     'tarif_lembur': employee.x_tarif_lembur,
                 })
             vals_list.append(vals)
+
+        # Karyawan yang tidak terjaring query di atas (mis. sudah
+        # di-archive, active=False, sehingga hilang dari search default
+        # Odoo) tapi punya saldo_akhir != 0 di periode sebelumnya tetap
+        # dapat baris saldo-only -- tanpa ini, hutang/piutang ke orang
+        # yang sudah berhenti kerja hilang dari sistem begitu saja.
+        # tarif_* sengaja TIDAK diisi (default 0) supaya hari_hadir=0 dan
+        # upah_kotor=0 pada baris ini, sesuai maksud saldo-only.
+        rounding = self.currency_id.rounding
+        for employee_id, saldo_akhir in saldo_awal_map.items():
+            if employee_id in employee_ids_terjaring:
+                continue
+            if float_is_zero(saldo_akhir, precision_rounding=rounding):
+                continue
+            vals_list.append({
+                'periode_id': self.id,
+                'employee_id': employee_id,
+                'saldo_awal': saldo_akhir,
+                'total_dibayar': 0.0,
+            })
         return vals_list
 
 
